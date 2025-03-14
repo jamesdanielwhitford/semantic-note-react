@@ -1,12 +1,15 @@
-import React from 'react';
+// src/components/Dashboard.js
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useFolders } from '../context/FolderContext';
 import { useNotes } from '../context/NoteContext';
-import { FilePlus, FolderPlus, Search, Lightbulb, FileText, FolderIcon } from 'lucide-react';
+import { FilePlus, FolderPlus, Search, Lightbulb, FileText, FolderIcon, Sparkles, Layers } from 'lucide-react';
 
 const Dashboard = () => {
   const { folders } = useFolders();
-  const { notes } = useNotes();
+  const { notes, generateFolderSuggestions } = useNotes();
+  const [quickSuggestion, setQuickSuggestion] = useState(null);
+  const [isLoadingQuickSuggestion, setIsLoadingQuickSuggestion] = useState(false);
   
   // Get recent notes
   const recentNotes = [...notes]
@@ -18,9 +21,68 @@ const Dashboard = () => {
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 5);
   
+  // Get unorganized notes
+  const unorganizedNotes = notes.filter(note => !note.folderId);
+  
+  // Get a quick folder suggestion if there are enough unorganized notes
+  useEffect(() => {
+    const getQuickSuggestion = async () => {
+      if (unorganizedNotes.length >= 3) {
+        try {
+          setIsLoadingQuickSuggestion(true);
+          const suggestions = await generateFolderSuggestions(true);
+          if (suggestions && suggestions.length > 0) {
+            setQuickSuggestion(suggestions[0]);
+          }
+        } catch (error) {
+          console.error('Error generating quick suggestion:', error);
+        } finally {
+          setIsLoadingQuickSuggestion(false);
+        }
+      }
+    };
+    
+    getQuickSuggestion();
+  }, [unorganizedNotes.length, generateFolderSuggestions]);
+  
+  // Render the Quick Suggestion Card
+  const renderQuickSuggestion = () => {
+    if (!quickSuggestion) return null;
+    
+    return (
+      <div className="bg-blue-50 rounded-lg shadow-sm p-4 border border-blue-100 mb-6">
+        <div className="flex items-start">
+          <div className="bg-blue-100 rounded-full p-2 mr-4">
+            <Sparkles size={24} className="text-blue-600" />
+          </div>
+          
+          <div className="flex-grow">
+            <h3 className="text-lg font-medium text-blue-800">Folder Suggestion</h3>
+            <p className="text-sm text-blue-700 mt-1">
+              We found {quickSuggestion.noteCount} notes that could be organized into:
+            </p>
+            <div className="mt-2 mb-3">
+              <div className="font-medium">{quickSuggestion.title}</div>
+              <div className="text-sm">{quickSuggestion.description}</div>
+            </div>
+            <Link
+              to="/folder-suggestions"
+              className="text-blue-600 hover:underline text-sm"
+            >
+              View this and more suggestions
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
   return (
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-6">Welcome to SemanticNote</h1>
+      
+      {/* Quick Suggestion */}
+      {!isLoadingQuickSuggestion && quickSuggestion && renderQuickSuggestion()}
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="bg-white rounded-lg shadow-sm p-6">
@@ -83,6 +145,31 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+      
+      {/* Organization Status */}
+      {unorganizedNotes.length > 0 && (
+        <div className="bg-amber-50 rounded-lg shadow-sm p-6 border border-amber-100 mb-6">
+          <div className="flex items-start">
+            <div className="mr-4">
+              <Layers size={24} className="text-amber-500" />
+            </div>
+            <div>
+              <h3 className="text-lg font-medium">Organization Status</h3>
+              <p className="text-gray-700 mt-1">
+                You have {unorganizedNotes.length} notes that aren't organized in any folder.
+              </p>
+              <div className="mt-3">
+                <Link
+                  to="/folder-suggestions"
+                  className="inline-block px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                >
+                  Get Organization Suggestions
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white rounded-lg shadow-sm p-6">

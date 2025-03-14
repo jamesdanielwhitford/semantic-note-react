@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+// src/components/Notes/CreateNote.js
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useNotes } from '../../context/NoteContext';
 import { useFolders } from '../../context/FolderContext';
+import { Sparkles, AlertCircle } from 'lucide-react';
 
 const CreateNote = () => {
   const { noteId } = useParams();
@@ -19,8 +21,51 @@ const CreateNote = () => {
   const [autoAssign, setAutoAssign] = useState(!existingNote?.folderId);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [showingBestMatch, setShowingBestMatch] = useState(false);
   
   const isEditing = !!existingNote;
+  
+  // Get best matching folder when content changes significantly
+  useEffect(() => {
+    const findBestMatch = async () => {
+      if (!autoAssign || content.length < 50 || isEditing) return;
+      
+      // Only check when there's enough content and not too often
+      const shouldCheck = content.length >= 100 && !showingBestMatch;
+      
+      if (shouldCheck) {
+        try {
+          setShowingBestMatch(true);
+          
+          // Get proposed folder based on content
+          // This is a lightweight preview, not the full algorithm
+          const matchingFolder = folders.find(folder => {
+            const folderTerms = `${folder.title} ${folder.description || ''}`.toLowerCase();
+            const contentLower = content.toLowerCase();
+            
+            // Simple term matching for preview purposes
+            return folderTerms.split(' ').some(term => 
+              term.length > 3 && contentLower.includes(term)
+            );
+          });
+          
+          if (matchingFolder) {
+            setAiSuggestion({
+              id: matchingFolder.id,
+              title: matchingFolder.title
+            });
+          } else {
+            setAiSuggestion(null);
+          }
+        } catch (error) {
+          console.error('Error finding best match:', error);
+        }
+      }
+    };
+    
+    findBestMatch();
+  }, [content, autoAssign, folders, isEditing, showingBestMatch]);
   
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -61,7 +106,8 @@ const CreateNote = () => {
       </h2>
       
       {error && (
-        <div className="bg-red-100 text-red-700 p-3 rounded mb-4">
+        <div className="bg-red-100 text-red-700 p-3 rounded mb-4 flex items-center">
+          <AlertCircle size={18} className="mr-2" />
           {error}
         </div>
       )}
@@ -94,6 +140,19 @@ const CreateNote = () => {
               Auto-assign to best matching folder
             </label>
           </div>
+          
+          {/* Show AI suggestion if available */}
+          {autoAssign && aiSuggestion && (
+            <div className="bg-blue-50 border border-blue-100 rounded p-3 mb-3 flex items-center">
+              <Sparkles size={18} className="text-blue-500 mr-2" />
+              <div>
+                <span className="text-sm text-blue-700">
+                  Based on content, this note will likely be assigned to: 
+                </span>
+                <span className="ml-1 font-medium">"{aiSuggestion.title}"</span>
+              </div>
+            </div>
+          )}
           
           {!autoAssign && (
             <div>

@@ -1,8 +1,11 @@
+// src/context/NoteContext.js
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { generateEmbedding } from '../services/openai';
 import { getNotes, saveNote, updateNote, deleteNote } from '../services/api';
 import { calculateSimilarity } from '../utils/similarity';
 import { useFolders } from './FolderContext';
+import vectorDB from '../services/vectorDB';
+import clusterService from '../services/clusterService';
 
 // Initial state
 const initialState = {
@@ -76,6 +79,27 @@ export const NoteProvider = ({ children }) => {
     fetchNotes();
   }, []);
 
+  // Initialize vector database with existing notes
+  useEffect(() => {
+    const initializeVectorDB = async () => {
+      if (state.notes.length > 0) {
+        // Add notes to vector database
+        for (const note of state.notes) {
+          if (note.embedding) {
+            await vectorDB.upsert('notes', {
+              id: note.id,
+              content: note.content,
+              folderId: note.folderId,
+              vector: note.embedding
+            });
+          }
+        }
+      }
+    };
+
+    initializeVectorDB();
+  }, [state.notes]);
+
   // Fetch all notes
   const fetchNotes = async () => {
     dispatch({ type: 'FETCH_NOTES_REQUEST' });
@@ -102,7 +126,12 @@ export const NoteProvider = ({ children }) => {
       // Determine best folder if not specified
       let folderId = noteData.folderId;
       if (!folderId) {
-        folderId = await findBestMatchingFolder(embedding);
+        // Use the cluster service to find the best matching folder
+        const bestMatch = await clusterService.findBestMatchingFolder(
+          { ...noteData, embedding },
+          folders
+        );
+        folderId = bestMatch;
       }
       
       // Save note with embedding and folder
@@ -115,6 +144,20 @@ export const NoteProvider = ({ children }) => {
       dispatch({ 
         type: 'CREATE_NOTE_SUCCESS', 
         payload: newNote 
+      });
+      
+      // Add to vector database
+      await vectorDB.upsert('notes', {
+        id: newNote.id,
+        content: newNote.content,
+        folderId: newNote.folderId,
+        vector: embedding
+      });
+      
+      // Enrich note semantics (async, don't await)
+      clusterService.enrichNoteSemantics(newNote).then(enrichedNote => {
+        // Silently update the note with enriched data
+        updateNote(newNote.id, enrichedNote);
       });
       
       // Update folder summary if assigned to a folder
@@ -141,14 +184,21 @@ export const NoteProvider = ({ children }) => {
       
       // Generate new embedding if content changed
       let embedding = existingNote.embedding;
+      let needsSemanticUpdate = false;
+      
       if (noteData.content !== existingNote.content) {
         embedding = await generateEmbedding(noteData.content);
+        needsSemanticUpdate = true;
       }
       
       // Determine best folder if reassignment is needed
       let folderId = noteData.folderId;
       if (folderId === undefined && embedding !== existingNote.embedding) {
-        folderId = await findBestMatchingFolder(embedding);
+        const bestMatch = await clusterService.findBestMatchingFolder(
+          { ...noteData, embedding },
+          folders
+        );
+        folderId = bestMatch;
       }
       
       // Update note
@@ -163,6 +213,22 @@ export const NoteProvider = ({ children }) => {
         type: 'UPDATE_NOTE_SUCCESS', 
         payload: updatedNote 
       });
+      
+      // Update in vector database
+      await vectorDB.upsert('notes', {
+        id: updatedNote.id,
+        content: updatedNote.content,
+        folderId: updatedNote.folderId,
+        vector: embedding
+      });
+      
+      // Update semantic enrichment if content changed
+      if (needsSemanticUpdate) {
+        clusterService.enrichNoteSemantics(updatedNote).then(enrichedNote => {
+          // Silently update the note with enriched data
+          updateNote(noteId, enrichedNote);
+        });
+      }
       
       // Update folder summaries if necessary
       if (updatedNote.folderId) {
@@ -196,6 +262,9 @@ export const NoteProvider = ({ children }) => {
         payload: noteId 
       });
       
+      // Remove from vector database
+      await vectorDB.delete('notes', noteId);
+      
       // Update folder summary if the note was in a folder
       if (folderId) {
         await updateFolderSummary(folderId);
@@ -217,29 +286,43 @@ export const NoteProvider = ({ children }) => {
     });
   };
 
-  // Find the best matching folder based on embedding similarity
-  const findBestMatchingFolder = async (embedding, similarityThreshold = 0.75) => {
-    let bestMatch = null;
-    let bestScore = 0;
-    
-    for (const folder of folders) {
-      const targetVector = folder.summaryEmbedding || folder.embedding;
-      if (!targetVector) continue;
-      
-      const score = calculateSimilarity(embedding, targetVector);
-      
-      if (score > bestScore && score >= similarityThreshold) {
-        bestScore = score;
-        bestMatch = folder.id;
-      }
-    }
-    
-    return bestMatch;
-  };
-
   // Get notes for a specific folder
   const getNotesByFolder = (folderId) => {
     return state.notes.filter(note => note.folderId === folderId);
+  };
+
+  // Generate folder suggestions based on notes
+  const generateFolderSuggestions = async (useAutoContext = false, parentFolderId = null) => {
+    try {
+      // If auto context, use all notes
+      const notesToUse = useAutoContext 
+        ? state.notes 
+        : (parentFolderId 
+            ? state.notes.filter(note => note.folderId === parentFolderId)
+            : state.notes.filter(note => !note.folderId));
+      
+      // Skip if not enough notes
+      if (notesToUse.length < 3) {
+        return [];
+      }
+      
+      return await clusterService.generateFolderSuggestions(notesToUse, {
+        parentFolderId
+      });
+    } catch (error) {
+      console.error('Error generating folder suggestions:', error);
+      throw error;
+    }
+  };
+
+  // Generate hierarchical folder suggestions
+  const generateHierarchicalSuggestions = async () => {
+    try {
+      return await clusterService.generateHierarchicalSuggestions(state.notes);
+    } catch (error) {
+      console.error('Error generating hierarchical suggestions:', error);
+      throw error;
+    }
   };
 
   return (
@@ -251,7 +334,9 @@ export const NoteProvider = ({ children }) => {
         editNote,
         removeNote,
         setCurrentNote,
-        getNotesByFolder
+        getNotesByFolder,
+        generateFolderSuggestions,
+        generateHierarchicalSuggestions
       }}
     >
       {children}
