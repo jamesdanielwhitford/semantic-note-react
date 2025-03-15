@@ -42,7 +42,9 @@ function App() {
                   <Route path="/folders" element={<FolderList />} />
                   <Route path="/folders/:folderId" element={<FolderView />} />
                   <Route path="/create-folder" element={<CreateFolder />} />
+                  <Route path="/create-folder/:folderId" element={<CreateFolder />} />
                   <Route path="/folder-suggestions" element={<FolderSuggestions />} />
+                  <Route path="/folder-suggestions/:folderId" element={<FolderSuggestions />} />
                   <Route path="/notes" element={<NoteList />} />
                   <Route path="/notes/:noteId" element={<NoteView />} />
                   <Route path="/create-note" element={<CreateNote />} />

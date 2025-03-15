@@ -1,27 +1,31 @@
 // src/components/Folders/FolderSuggestions.js
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useFolders } from '../../context/FolderContext';
 import { useNotes } from '../../context/NoteContext';
-import { FolderIcon, Plus, Loader, ChevronDown, ChevronRight, FileText, Check } from 'lucide-react';
+import { FolderIcon, Plus, Loader, ChevronDown, ChevronRight, FileText, ArrowLeft, Check } from 'lucide-react';
 
 const FolderSuggestions = () => {
   const { folderId } = useParams();
-  const [context, setContext] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isAutoContext, setIsAutoContext] = useState(true);
   const [expandedSuggestion, setExpandedSuggestion] = useState(null);
-  const [hierarchicalView, setHierarchicalView] = useState(false);
   const [selectedNotes, setSelectedNotes] = useState({});
+  const [createdFolders, setCreatedFolders] = useState([]);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   
-  const { createFolder, createFolderFromSuggestion, folders } = useFolders();
-  const { notes, generateFolderSuggestions, generateHierarchicalSuggestions } = useNotes();
+  const { createFolder, folders } = useFolders();
+  const { notes, suggestFolders, moveNotesToFolder } = useNotes();
   const navigate = useNavigate();
 
   // Get current folder if folderId is provided
   const currentFolder = folderId ? folders.find(f => f.id === parseInt(folderId)) : null;
+  
+  // Generate suggestions when component loads
+  useEffect(() => {
+    handleGenerateSuggestions();
+  }, [folderId]);
   
   // Reset selected notes when suggestions change
   useEffect(() => {
@@ -33,11 +37,11 @@ const FolderSuggestions = () => {
         });
       }
     });
-    setSelectedNotes(initialSelectedState);
+    setSelectedNotes(prev => ({...prev, ...initialSelectedState}));
   }, [suggestions]);
   
   // Toggle note selection
-  const toggleNoteSelection = (noteId, suggestionIndex) => {
+  const toggleNoteSelection = (noteId) => {
     setSelectedNotes(prev => ({
       ...prev,
       [noteId]: !prev[noteId]
@@ -49,18 +53,13 @@ const FolderSuggestions = () => {
     setIsLoading(true);
     setError('');
     setSuggestions([]);
+    setCreatedFolders([]);
     
     try {
-      // Generate suggestions
-      if (hierarchicalView) {
-        const hierarchicalSuggestions = await generateHierarchicalSuggestions();
-        setSuggestions(hierarchicalSuggestions);
-      } else {
-        // For regular suggestions, pass parent folder ID if available
-        const parentId = currentFolder ? parseInt(folderId) : null;
-        const result = await generateFolderSuggestions(isAutoContext, parentId);
-        setSuggestions(result);
-      }
+      // For regular suggestions, pass parent folder ID if available
+      const parentId = currentFolder ? parseInt(folderId) : null;
+      const result = await suggestFolders(parentId);
+      setSuggestions(result);
     } catch (err) {
       console.error('Error generating suggestions:', err);
       setError(err.message || 'Failed to generate suggestions');
@@ -77,21 +76,26 @@ const FolderSuggestions = () => {
       // Filter selected notes
       const filteredNoteIds = suggestion.noteIds.filter(id => selectedNotes[id]);
       
-      // Create folder with selected notes
+      // Create folder
       const folderData = {
         title: suggestion.title,
         description: suggestion.description,
-        noteIds: filteredNoteIds,
         parentId: currentFolder ? parseInt(folderId) : null
       };
       
       const newFolder = await createFolder(folderData);
       
-      // Remove this suggestion from the list
-      setSuggestions(prev => prev.filter((_, i) => i !== index));
+      // Move selected notes to this folder
+      if (filteredNoteIds.length > 0) {
+        await moveNotesToFolder(filteredNoteIds, newFolder.id);
+      }
       
-      // Navigate to the new folder
-      navigate(`/folders/${newFolder.id}`);
+      // Mark this suggestion as created
+      setCreatedFolders(prev => [...prev, { index, folderId: newFolder.id }]);
+      
+      // Show success message
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
     } catch (err) {
       console.error('Error creating folder:', err);
       setError(err.message || 'Failed to create folder');
@@ -100,9 +104,25 @@ const FolderSuggestions = () => {
     }
   };
   
+  // Navigate to a created folder
+  const goToFolder = (folderId) => {
+    navigate(`/folders/${folderId}`);
+  };
+  
   // Toggle expanded suggestion
   const toggleExpanded = (index) => {
     setExpandedSuggestion(expandedSuggestion === index ? null : index);
+  };
+  
+  // Check if a suggestion has already been created
+  const isFolderCreated = (index) => {
+    return createdFolders.some(folder => folder.index === index);
+  };
+  
+  // Get the folder ID of a created suggestion
+  const getCreatedFolderId = (index) => {
+    const folder = createdFolders.find(folder => folder.index === index);
+    return folder ? folder.folderId : null;
   };
   
   // Render note preview for a suggestion
@@ -131,17 +151,19 @@ const FolderSuggestions = () => {
   };
   
   // Render a single suggestion
-  const renderSuggestion = (suggestion, index, isSubfolder = false) => {
+  const renderSuggestion = (suggestion, index) => {
     const isExpanded = expandedSuggestion === index;
     const noteCount = suggestion.noteIds ? suggestion.noteIds.length : 0;
     const selectedCount = suggestion.noteIds 
       ? suggestion.noteIds.filter(id => selectedNotes[id]).length 
       : 0;
+    const isCreated = isFolderCreated(index);
+    const createdFolderId = getCreatedFolderId(index);
     
     return (
       <div
         key={index}
-        className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow ${isSubfolder ? 'ml-8 mt-3' : 'mb-4'}`}
+        className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow mb-4 ${isCreated ? 'border-green-300 bg-green-50' : ''}`}
       >
         <div className="flex items-start">
           <button 
@@ -151,36 +173,43 @@ const FolderSuggestions = () => {
             {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
           </button>
           
-          <FolderIcon size={20} className="text-yellow-500 mr-3 mt-1" />
+          <FolderIcon size={20} className={`${isCreated ? 'text-green-500' : 'text-yellow-500'} mr-3 mt-1`} />
           
           <div className="flex-grow">
-            <div className="flex items-center">
-              <h4 className="font-medium text-gray-800">{suggestion.title}</h4>
-              {suggestion.cohesion && (
-                <span className="ml-2 text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-full">
-                  {Math.round(suggestion.cohesion * 100)}% match
-                </span>
-              )}
-            </div>
-            
+            <h4 className="font-medium text-gray-800">{suggestion.title}</h4>
             <p className="text-gray-600 text-sm mt-1">{suggestion.description}</p>
             
             <div className="mt-2 text-xs text-gray-500">
-              {selectedCount}/{noteCount} notes selected
+              {isCreated ? (
+                <span className="text-green-600 font-medium flex items-center">
+                  <Check size={14} className="mr-1" /> Folder created
+                </span>
+              ) : (
+                `${selectedCount}/${noteCount} notes selected`
+              )}
             </div>
           </div>
           
-          <button
-            onClick={() => handleCreateFolder(suggestion, index)}
-            className="flex items-center px-3 py-1.5 bg-green-500 text-white rounded hover:bg-green-600"
-            disabled={isLoading || selectedCount === 0}
-          >
-            {isLoading ? <Loader size={16} className="animate-spin" /> : <Plus size={16} />}
-            <span className="ml-1">Create</span>
-          </button>
+          {isCreated ? (
+            <button
+              onClick={() => goToFolder(createdFolderId)}
+              className="flex items-center px-3 py-1.5 bg-green-500 text-white rounded hover:bg-green-600"
+            >
+              <span>View Folder</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => handleCreateFolder(suggestion, index)}
+              className="flex items-center px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+              disabled={isLoading || selectedCount === 0}
+            >
+              {isLoading ? <Loader size={16} className="animate-spin" /> : <Plus size={16} />}
+              <span className="ml-1">Create</span>
+            </button>
+          )}
         </div>
         
-        {isExpanded && (
+        {isExpanded && !isCreated && (
           <div className="mt-4 border rounded-md max-h-64 overflow-y-auto">
             <div className="p-2 bg-gray-50 border-b flex items-center justify-between">
               <span className="text-sm font-medium">Notes to include</span>
@@ -206,14 +235,52 @@ const FolderSuggestions = () => {
             </div>
           </div>
         )}
+      </div>
+    );
+  };
+  
+  // Success message banner
+  const renderSuccessMessage = () => {
+    if (!showSuccessMessage) return null;
+    
+    return (
+      <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+        <div className="flex items-center">
+          <Check size={18} className="mr-2" />
+          <span>Folder created successfully!</span>
+        </div>
+      </div>
+    );
+  };
+  
+  // Action buttons at the bottom
+  const renderActionButtons = () => {
+    if (suggestions.length === 0 || isLoading) return null;
+    
+    const allCreated = suggestions.length > 0 && suggestions.every((_, index) => isFolderCreated(index));
+    
+    return (
+      <div className="mt-6 flex justify-between">
+        <button
+          onClick={handleGenerateSuggestions}
+          className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+        >
+          Refresh Suggestions
+        </button>
         
-        {/* Render subfolder suggestions if available */}
-        {isExpanded && suggestion.subFolders && suggestion.subFolders.length > 0 && (
-          <div className="mt-4">
-            <h5 className="text-sm font-medium text-gray-700 mb-2">Potential Subfolders</h5>
-            {suggestion.subFolders.map((subFolder, subIndex) => 
-              renderSuggestion(subFolder, `${index}-${subIndex}`, true)
-            )}
+        {allCreated && (
+          <button
+            onClick={() => navigate('/')}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Return to Dashboard
+          </button>
+        )}
+        
+        {createdFolders.length > 0 && !allCreated && (
+          <div className="text-sm text-gray-600 italic flex items-center">
+            <Check size={14} className="mr-1" />
+            {createdFolders.length} of {suggestions.length} folders created
           </div>
         )}
       </div>
@@ -222,15 +289,33 @@ const FolderSuggestions = () => {
   
   return (
     <div className="max-w-4xl mx-auto p-4">
-      <h2 className="text-2xl font-semibold mb-2">
-        {currentFolder 
-          ? `Suggest Subfolders for "${currentFolder.title}"`
-          : "Get AI Folder Suggestions"}
-      </h2>
+      {renderSuccessMessage()}
+      
+      <div className="flex items-center mb-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="mr-3 text-gray-500 hover:text-gray-700"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <h2 className="text-2xl font-semibold">
+          {currentFolder 
+            ? `Suggest Subfolders for "${currentFolder.title}"`
+            : "Get AI Folder Suggestions"}
+        </h2>
+      </div>
       
       {currentFolder && (
         <p className="text-gray-600 mb-6">
           Create intelligent subfolders to organize the {notes.filter(n => n.folderId === parseInt(folderId)).length} notes in this folder.
+        </p>
+      )}
+      
+      {!currentFolder && (
+        <p className="text-gray-600 mb-6">
+          Create folders to organize your {notes.filter(n => !n.folderId).length} unorganized notes.
+          <br />
+          <span className="text-blue-600 font-medium">You can create multiple folders from these suggestions!</span>
         </p>
       )}
       
@@ -240,90 +325,37 @@ const FolderSuggestions = () => {
         </div>
       )}
       
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <div className="mb-4">
-          <h3 className="text-lg font-medium mb-3">Suggestion Options</h3>
-          
-          <div className="flex items-center mb-4">
-            <label className="flex items-center mr-6 text-gray-700">
-              <input
-                type="checkbox"
-                checked={isAutoContext}
-                onChange={() => setIsAutoContext(!isAutoContext)}
-                className="mr-2"
-              />
-              Use {currentFolder ? 'all notes in this folder' : 'recent notes'} as context
-            </label>
-            
-            <label className="flex items-center text-gray-700">
-              <input
-                type="checkbox"
-                checked={hierarchicalView}
-                onChange={() => setHierarchicalView(!hierarchicalView)}
-                className="mr-2"
-              />
-              Show hierarchical suggestions
-            </label>
-          </div>
-          
-          {!isAutoContext && !currentFolder && (
-            <div>
-              <label htmlFor="context" className="block text-gray-700 mb-1">
-                Enter context for folder suggestions
-              </label>
-              <textarea
-                id="context"
-                value={context}
-                onChange={(e) => setContext(e.target.value)}
-                className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows="5"
-                placeholder="Enter notes, ideas, or topics you'd like to organize"
-                disabled={isLoading}
-              />
-            </div>
-          )}
-          
-          {isAutoContext && (
-            <p className="text-sm text-gray-600 mb-4">
-              The AI will analyze {currentFolder 
-                ? `the ${notes.filter(n => n.folderId === parseInt(folderId)).length} notes in this folder` 
-                : `your ${notes.length} notes`} to suggest appropriate folders.
-            </p>
-          )}
+      {isLoading && (
+        <div className="text-center py-10">
+          <Loader size={40} className="animate-spin mx-auto mb-4 text-blue-500" />
+          <p className="text-gray-600">Generating folder suggestions...</p>
         </div>
-        
-        <button
-          onClick={handleGenerateSuggestions}
-          className="w-full py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-center"
-          disabled={isLoading || (!context && !isAutoContext && !currentFolder)}
-        >
-          {isLoading ? (
-            <>
-              <Loader size={18} className="animate-spin mr-2" />
-              Generating Suggestions...
-            </>
-          ) : (
-            'Generate Folder Suggestions'
-          )}
-        </button>
-      </div>
+      )}
       
-      {suggestions.length > 0 && (
+      {suggestions.length > 0 && !isLoading && (
         <div>
           <h3 className="text-lg font-medium mb-4">
-            {hierarchicalView ? 'Hierarchical Folder Suggestions' : 'Suggested Folders'}
+            Suggested Folders
           </h3>
           
           <div className="space-y-4">
             {suggestions.map((suggestion, index) => renderSuggestion(suggestion, index))}
           </div>
+          
+          {renderActionButtons()}
         </div>
       )}
       
-      {suggestions.length === 0 && !isLoading && !error && (
+      {suggestions.length === 0 && !isLoading && (
         <div className="text-center text-gray-500 p-8 bg-gray-50 rounded-lg border border-gray-200">
           <FolderIcon size={40} className="text-gray-300 mx-auto mb-3" />
-          <p>Generate suggestions to see folder recommendations based on your notes.</p>
+          <p>No suggestions available. Try adding more notes or click the button below to refresh.</p>
+          <button
+            onClick={handleGenerateSuggestions}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Refresh Suggestions
+          </button>
         </div>
       )}
     </div>

@@ -10,119 +10,88 @@ const openaiAPI = axios.create({
 });
 
 /**
- * Generate embedding vector for text using OpenAI API
- * @param {string} text - Text to generate embedding for
- * @returns {Promise<Array>} - Array of embedding values
- */
-export const generateEmbedding = async (text) => {
-  try {
-    console.log(`Generating embedding for text: ${text.substring(0, 30)}...`);
-    
-    const response = await openaiAPI.post('/embeddings', {
-      input: text,
-      model: 'text-embedding-ada-002'
-    });
-    
-    const embedding = response.data.data[0].embedding;
-    console.log(`Embedding generated successfully: ${embedding.length} dimensions`);
-    
-    return embedding;
-  } catch (error) {
-    console.error('Error generating embedding:', error);
-    throw new Error('Failed to generate embedding. Please try again.');
-  }
-};
-
-/**
- * Generate summary for text using OpenAI API
- * @param {string} text - Text to summarize
- * @param {string} parentSummary - Optional parent summary for context
- * @returns {Promise<string>} - Generated summary text
- */
-export const generateSummary = async (text, parentSummary = null) => {
-  try {
-    console.log(`Generating summary for text of length: ${text.length}`);
-    
-    let prompt = "Generate a concise, multi-sentence summary for the following notes:\n\n";
-    
-    if (parentSummary) {
-      prompt += `Parent Folder Context: ${parentSummary}\n\n`;
-    }
-    
-    prompt += text;
-    
-    const response = await openaiAPI.post('/chat/completions', {
-      model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: "You are a summarization assistant." },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.5,
-      max_tokens: 150
-    });
-    
-    const summary = response.data.choices[0].message.content.trim();
-    console.log(`Summary generated successfully: ${summary.substring(0, 50)}...`);
-    
-    return summary;
-  } catch (error) {
-    console.error('Error generating summary:', error);
-    throw new Error('Failed to generate summary. Please try again.');
-  }
-};
-
-/**
- * Generate folder suggestions based on provided context
- * @param {string} context - Content to generate folder suggestions from
+ * Generate folder suggestions based on notes content
+ * @param {Array} notes - Array of notes to analyze
+ * @param {string} parentFolderTitle - Optional parent folder name for context
  * @returns {Promise<Array>} - Array of folder suggestion objects
  */
-export const generateFolderSuggestions = async (context) => {
+export const generateFolderSuggestions = async (notes, parentFolderTitle = null) => {
   try {
-    console.log(`Generating folder suggestions based on context of length: ${context.length}`);
+    // Extract note content
+    const notesContent = notes.map(note => note.content).join('\n\n---\n\n');
     
-    const prompt = `Based on the following context, suggest 3-5 folder categories. For each suggestion, 
-      provide a concise folder title and a brief description. Context:\n\n${context}`;
+    // Create the prompt based on whether we're at the top level or within a folder
+    let prompt;
+    if (parentFolderTitle) {
+      prompt = `Based on these notes that are currently inside a folder called "${parentFolderTitle}", suggest 3-5 more specific sub-folders to further organize them. 
+      For each suggestion, provide:
+      1. A folder title that's more specific than "${parentFolderTitle}"
+      2. A brief description of what this folder contains
+      3. A list of indices of notes that belong in this folder (0-indexed from the list provided)
+      
+      Notes:
+      ${notes.map((note, i) => `[${i}] ${note.content.substring(0, 200)}${note.content.length > 200 ? '...' : ''}`).join('\n\n')}
+      
+      Respond in JSON format like:
+      [
+        {
+          "title": "Folder Title",
+          "description": "Brief description of folder",
+          "noteIndices": [0, 2, 5]
+        }
+      ]`;
+    } else {
+      prompt = `Based on these notes, suggest 3-5 top-level folders to organize them by main concepts. 
+      For each suggestion, provide:
+      1. A high-level folder title that captures a main concept
+      2. A brief description of what this folder contains
+      3. A list of indices of notes that belong in this folder (0-indexed from the list provided)
+      
+      Notes:
+      ${notes.map((note, i) => `[${i}] ${note.content.substring(0, 200)}${note.content.length > 200 ? '...' : ''}`).join('\n\n')}
+      
+      Focus on creating broad, top-level categories that can later be subdivided.
+      Notes can belong to multiple folders if relevant.
+      
+      Respond in JSON format like:
+      [
+        {
+          "title": "Folder Title",
+          "description": "Brief description of folder",
+          "noteIndices": [0, 2, 5]
+        }
+      ]`;
+    }
     
     const response = await openaiAPI.post('/chat/completions', {
       model: "gpt-3.5-turbo",
       messages: [
-        { role: "system", content: "You are a folder suggestion assistant." },
+        { role: "system", content: "You are an assistant that helps organize notes into logical folder structures." },
         { role: "user", content: prompt }
       ],
-      temperature: 0.7,
-      max_tokens: 200
+      temperature: 0.7
     });
     
-    const suggestionsText = response.data.choices[0].message.content.trim();
-    console.log(`Folder suggestions raw response: ${suggestionsText}`);
+    const result = response.data.choices[0].message.content.trim();
     
-    // Parse the suggestions from the text response
-    const suggestions = [];
-    const lines = suggestionsText.split('\n');
-    
-    for (const line of lines) {
-      if (line.trim()) {
-        if (line.includes("Title:") && line.includes("Description:")) {
-          const parts = line.split(" - ");
-          if (parts.length >= 2) {
-            const title = parts[0].split("Title:")[1]?.trim();
-            const description = parts[1].split("Description:")[1]?.trim();
-            
-            if (title && description) {
-              suggestions.push({ title, description });
-            }
-          }
-        }
-      }
+    try {
+      // Parse the JSON response
+      const suggestions = JSON.parse(result);
+      
+      // Map the indexed notes to note IDs
+      return suggestions.map(suggestion => ({
+        title: suggestion.title,
+        description: suggestion.description,
+        noteIds: suggestion.noteIndices.map(index => notes[index]?.id).filter(id => id)
+      }));
+    } catch (error) {
+      console.error('Error parsing AI suggestions:', error);
+      throw new Error('Failed to parse folder suggestions');
     }
-    
-    console.log(`Parsed ${suggestions.length} folder suggestions`);
-    return suggestions;
   } catch (error) {
     console.error('Error generating folder suggestions:', error);
     throw new Error('Failed to generate folder suggestions. Please try again.');
   }
 };
 
-// Export the OpenAI instance for any other API calls
 export default openaiAPI;
