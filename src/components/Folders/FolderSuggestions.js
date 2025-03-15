@@ -1,4 +1,4 @@
-// Updated imports for FolderSuggestions.js
+// src/components/Folders/FolderSuggestions.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useFolders } from '../../context/FolderContext';
@@ -24,8 +24,11 @@ const FolderSuggestions = () => {
 
   // Get current folder if folderId is provided
   const currentFolder = folderId ? folders.find(f => f.id === parseInt(folderId)) : null;
-
-  // Add this function to the FolderSuggestions component
+  
+  // Get existing subfolders for the current folder
+  const existingSubfolders = currentFolder 
+    ? folders.filter(f => f.parentId === parseInt(folderId))
+    : folders.filter(f => !f.parentId); // Top-level folders if not in a folder
 
   // Handle moving notes to an existing folder
   const handleMoveToExistingFolder = async (suggestion, index) => {
@@ -85,8 +88,6 @@ const FolderSuggestions = () => {
       [noteId]: !prev[noteId]
     }));
   };
-
-  
   
   // Generate suggestions based on context
   const handleGenerateSuggestions = async () => {
@@ -98,7 +99,24 @@ const FolderSuggestions = () => {
     try {
       // For regular suggestions, pass parent folder ID if available
       const parentId = currentFolder ? parseInt(folderId) : null;
-      const result = await suggestFolders(parentId);
+      
+      // Get notes to analyze (either notes in current folder or unassigned notes)
+      const notesToAnalyze = parentId 
+        ? notes.filter(note => note.folderId === parentId)
+        : notes.filter(note => !note.folderId);
+      
+      // Skip if not enough notes
+      if (notesToAnalyze.length < 3) {
+        throw new Error('Not enough notes to generate suggestions. Add at least 3 notes.');
+      }
+      
+      // Generate suggestions, passing existing subfolders for consideration
+      const result = await suggestFolders(
+        notesToAnalyze,
+        existingSubfolders, 
+        currentFolder?.title
+      );
+      
       setSuggestions(result);
     } catch (err) {
       console.error('Error generating suggestions:', err);
@@ -189,7 +207,6 @@ const FolderSuggestions = () => {
       </div>
     );
   };
-  
   
   const renderSuggestion = (suggestion, index) => {
     const isExpanded = expandedSuggestion === index;
@@ -302,27 +319,27 @@ const FolderSuggestions = () => {
     );
   };
   
-// Success message banner with support for both new and existing folders
-const renderSuccessMessage = () => {
-  if (!showSuccessMessage) return null;
-  
-  // Determine if the most recent action was for an existing folder
-  const latestFolder = createdFolders[createdFolders.length - 1];
-  const isExistingFolder = latestFolder?.isExisting;
-  
-  return (
-    <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
-      <div className="flex items-center">
-        <Check size={18} className="mr-2" />
-        <span>
-          {isExistingFolder 
-            ? 'Notes successfully moved to folder!'
-            : 'Folder created successfully!'}
-        </span>
+  // Success message banner with support for both new and existing folders
+  const renderSuccessMessage = () => {
+    if (!showSuccessMessage) return null;
+    
+    // Determine if the most recent action was for an existing folder
+    const latestFolder = createdFolders[createdFolders.length - 1];
+    const isExistingFolder = latestFolder?.isExisting;
+    
+    return (
+      <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+        <div className="flex items-center">
+          <Check size={18} className="mr-2" />
+          <span>
+            {isExistingFolder 
+              ? 'Notes successfully moved to folder!'
+              : 'Folder created successfully!'}
+          </span>
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
   
   // Action buttons at the bottom
   const renderActionButtons = () => {
@@ -379,6 +396,11 @@ const renderSuccessMessage = () => {
       {currentFolder && (
         <p className="text-gray-600 mb-6">
           Create intelligent subfolders to organize the {notes.filter(n => n.folderId === parseInt(folderId)).length} notes in this folder.
+          {existingSubfolders.length > 0 && (
+            <span className="block mt-2 text-blue-600">
+              You already have {existingSubfolders.length} existing subfolder(s) which will be considered.
+            </span>
+          )}
         </p>
       )}
       
