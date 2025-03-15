@@ -10,23 +10,36 @@ const openaiAPI = axios.create({
 });
 
 /**
- * Generate folder suggestions based on notes content
+ * Generate folder suggestions based on notes content, considering existing folders
  * @param {Array} notes - Array of notes to analyze
+ * @param {Array} existingFolders - Array of existing folders to consider
  * @param {string} parentFolderTitle - Optional parent folder name for context
  * @returns {Promise<Array>} - Array of folder suggestion objects
  */
-export const generateFolderSuggestions = async (notes, parentFolderTitle = null) => {
+export const generateFolderSuggestions = async (notes, existingFolders = [], parentFolderTitle = null) => {
   try {
     // Extract note content
     const notesContent = notes.map(note => note.content).join('\n\n---\n\n');
+    
+    // Format existing folders for the prompt
+    const existingFoldersText = existingFolders.length > 0 
+      ? `Existing folders:\n${existingFolders.map((folder, i) => 
+          `[${i}] "${folder.title}": ${folder.description || 'No description'}`
+        ).join('\n')}`
+      : 'There are no existing folders yet.';
     
     // Create the prompt based on whether we're at the top level or within a folder
     let prompt;
     if (parentFolderTitle) {
       prompt = `Based on these notes that are currently inside a folder called "${parentFolderTitle}", suggest 3-5 more specific sub-folders to further organize them. 
-      For each suggestion, provide:
-      1. A folder title that's more specific than "${parentFolderTitle}"
-      2. A brief description of what this folder contains
+      
+      ${existingFoldersText}
+      
+      For each suggestion:
+      1. If an existing folder is appropriate, recommend using it (specify its index)
+      2. If a new folder is needed, provide:
+         a. A folder title that's more specific than "${parentFolderTitle}"
+         b. A brief description of what this folder contains
       3. A list of indices of notes that belong in this folder (0-indexed from the list provided)
       
       Notes:
@@ -35,30 +48,52 @@ export const generateFolderSuggestions = async (notes, parentFolderTitle = null)
       Respond in JSON format like:
       [
         {
-          "title": "Folder Title",
-          "description": "Brief description of folder",
+          "useExistingFolder": true,
+          "existingFolderIndex": 2,
+          "title": null,
+          "description": null,
           "noteIndices": [0, 2, 5]
+        },
+        {
+          "useExistingFolder": false,
+          "existingFolderIndex": null,
+          "title": "New Folder Title",
+          "description": "Brief description of new folder",
+          "noteIndices": [1, 3, 4]
         }
       ]`;
     } else {
-      prompt = `Based on these notes, suggest 3-5 top-level folders to organize them by main concepts. 
-      For each suggestion, provide:
-      1. A high-level folder title that captures a main concept
-      2. A brief description of what this folder contains
+      prompt = `Based on these notes, suggest 3-5 folders to organize them by main concepts. Consider both existing folders and the need for new ones.
+      
+      ${existingFoldersText}
+      
+      For each suggestion:
+      1. If an existing folder is appropriate, recommend using it (specify its index)
+      2. If a new folder is needed, provide:
+         a. A high-level folder title that captures a main concept
+         b. A brief description of what this folder contains
       3. A list of indices of notes that belong in this folder (0-indexed from the list provided)
       
       Notes:
       ${notes.map((note, i) => `[${i}] ${note.content.substring(0, 200)}${note.content.length > 200 ? '...' : ''}`).join('\n\n')}
       
-      Focus on creating broad, top-level categories that can later be subdivided.
-      Notes can belong to multiple folders if relevant.
+      Focus on creating a logical organization. Notes can belong to multiple folders if relevant.
       
       Respond in JSON format like:
       [
         {
-          "title": "Folder Title",
-          "description": "Brief description of folder",
+          "useExistingFolder": true,
+          "existingFolderIndex": 2,
+          "title": null,
+          "description": null,
           "noteIndices": [0, 2, 5]
+        },
+        {
+          "useExistingFolder": false,
+          "existingFolderIndex": null,
+          "title": "New Folder Title",
+          "description": "Brief description of new folder",
+          "noteIndices": [1, 3, 4]
         }
       ]`;
     }
@@ -78,12 +113,26 @@ export const generateFolderSuggestions = async (notes, parentFolderTitle = null)
       // Parse the JSON response
       const suggestions = JSON.parse(result);
       
-      // Map the indexed notes to note IDs
-      return suggestions.map(suggestion => ({
-        title: suggestion.title,
-        description: suggestion.description,
-        noteIds: suggestion.noteIndices.map(index => notes[index]?.id).filter(id => id)
-      }));
+      // Map the suggestions to include existing folder information or new folder details
+      return suggestions.map(suggestion => {
+        if (suggestion.useExistingFolder && existingFolders[suggestion.existingFolderIndex]) {
+          const folder = existingFolders[suggestion.existingFolderIndex];
+          return {
+            isExisting: true,
+            folderId: folder.id,
+            title: folder.title,
+            description: folder.description || '',
+            noteIds: suggestion.noteIndices.map(index => notes[index]?.id).filter(id => id)
+          };
+        } else {
+          return {
+            isExisting: false,
+            title: suggestion.title,
+            description: suggestion.description || '',
+            noteIds: suggestion.noteIndices.map(index => notes[index]?.id).filter(id => id)
+          };
+        }
+      });
     } catch (error) {
       console.error('Error parsing AI suggestions:', error);
       throw new Error('Failed to parse folder suggestions');

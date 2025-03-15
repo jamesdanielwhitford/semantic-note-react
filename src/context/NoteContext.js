@@ -174,17 +174,30 @@ export const NoteProvider = ({ children }) => {
       let notesToAnalyze;
       let parentFolderTitle = null;
       
+      // Get all folders to consider for suggestions
+      const allFolders = await getFolders();
+      
+      // Filter to get relevant existing folders (exclude current parent and its children)
+      let existingFoldersToConsider = [];
       if (parentFolderId) {
+        // If we're in a folder, consider sibling folders (with same parent)
+        existingFoldersToConsider = allFolders.filter(f => 
+          f.id !== parentFolderId && 
+          f.parentId === allFolders.find(pf => pf.id === parentFolderId)?.parentId
+        );
+        
         // Get notes in this folder
         notesToAnalyze = state.notes.filter(note => note.folderId === parentFolderId);
         
         // Get parent folder title for context
-        const folders = await getFolders();
-        const parentFolder = folders.find(f => f.id === parentFolderId);
+        const parentFolder = allFolders.find(f => f.id === parentFolderId);
         if (parentFolder) {
           parentFolderTitle = parentFolder.title;
         }
       } else {
+        // If we're at top level, consider all top-level folders
+        existingFoldersToConsider = allFolders.filter(f => !f.parentId);
+        
         // Get top-level notes (not in any folder)
         notesToAnalyze = state.notes.filter(note => !note.folderId);
       }
@@ -195,7 +208,12 @@ export const NoteProvider = ({ children }) => {
       }
       
       // Generate suggestions
-      const suggestions = await generateFolderSuggestions(notesToAnalyze, parentFolderTitle);
+      const suggestions = await generateFolderSuggestions(
+        notesToAnalyze, 
+        existingFoldersToConsider, 
+        parentFolderTitle
+      );
+      
       return suggestions;
     } catch (error) {
       console.error('Error generating folder suggestions:', error);

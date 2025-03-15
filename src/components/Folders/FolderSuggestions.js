@@ -1,9 +1,12 @@
-// src/components/Folders/FolderSuggestions.js
+// Updated imports for FolderSuggestions.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useFolders } from '../../context/FolderContext';
 import { useNotes } from '../../context/NoteContext';
-import { FolderIcon, Plus, Loader, ChevronDown, ChevronRight, FileText, ArrowLeft, Check } from 'lucide-react';
+import { 
+  FolderIcon, Plus, Loader, ChevronDown, ChevronRight, 
+  FileText, ArrowLeft, Check, Info
+} from 'lucide-react';
 
 const FolderSuggestions = () => {
   const { folderId } = useParams();
@@ -21,6 +24,41 @@ const FolderSuggestions = () => {
 
   // Get current folder if folderId is provided
   const currentFolder = folderId ? folders.find(f => f.id === parseInt(folderId)) : null;
+
+  // Add this function to the FolderSuggestions component
+
+  // Handle moving notes to an existing folder
+  const handleMoveToExistingFolder = async (suggestion, index) => {
+    try {
+      setIsLoading(true);
+      
+      // Filter selected notes
+      const filteredNoteIds = suggestion.noteIds.filter(id => selectedNotes[id]);
+      
+      if (filteredNoteIds.length === 0) {
+        throw new Error('No notes selected to move');
+      }
+      
+      // Move selected notes to the existing folder
+      await moveNotesToFolder(filteredNoteIds, suggestion.folderId);
+      
+      // Mark this suggestion as processed
+      setCreatedFolders(prev => [...prev, { 
+        index, 
+        folderId: suggestion.folderId,
+        isExisting: true
+      }]);
+      
+      // Show success message
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+    } catch (err) {
+      console.error('Error moving notes to folder:', err);
+      setError(err.message || 'Failed to move notes to folder');
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   // Generate suggestions when component loads
   useEffect(() => {
@@ -47,6 +85,8 @@ const FolderSuggestions = () => {
       [noteId]: !prev[noteId]
     }));
   };
+
+  
   
   // Generate suggestions based on context
   const handleGenerateSuggestions = async () => {
@@ -150,7 +190,7 @@ const FolderSuggestions = () => {
     );
   };
   
-  // Render a single suggestion
+  
   const renderSuggestion = (suggestion, index) => {
     const isExpanded = expandedSuggestion === index;
     const noteCount = suggestion.noteIds ? suggestion.noteIds.length : 0;
@@ -160,10 +200,16 @@ const FolderSuggestions = () => {
     const isCreated = isFolderCreated(index);
     const createdFolderId = getCreatedFolderId(index);
     
+    // Handle existing folder suggestions differently
+    const isExistingFolder = suggestion.isExisting;
+    
     return (
       <div
         key={index}
-        className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow mb-4 ${isCreated ? 'border-green-300 bg-green-50' : ''}`}
+        className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow mb-4 ${
+          isCreated ? 'border-green-300 bg-green-50' : 
+          isExistingFolder ? 'border-blue-300 bg-blue-50' : ''
+        }`}
       >
         <div className="flex items-start">
           <button 
@@ -173,7 +219,11 @@ const FolderSuggestions = () => {
             {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
           </button>
           
-          <FolderIcon size={20} className={`${isCreated ? 'text-green-500' : 'text-yellow-500'} mr-3 mt-1`} />
+          <FolderIcon size={20} className={`${
+            isCreated ? 'text-green-500' : 
+            isExistingFolder ? 'text-blue-500' : 
+            'text-yellow-500'
+          } mr-3 mt-1`} />
           
           <div className="flex-grow">
             <h4 className="font-medium text-gray-800">{suggestion.title}</h4>
@@ -182,7 +232,11 @@ const FolderSuggestions = () => {
             <div className="mt-2 text-xs text-gray-500">
               {isCreated ? (
                 <span className="text-green-600 font-medium flex items-center">
-                  <Check size={14} className="mr-1" /> Folder created
+                  <Check size={14} className="mr-1" /> {isExistingFolder ? 'Notes added to folder' : 'Folder created'}
+                </span>
+              ) : isExistingFolder ? (
+                <span className="text-blue-600 font-medium flex items-center">
+                  <Info size={14} className="mr-1" /> Existing folder
                 </span>
               ) : (
                 `${selectedCount}/${noteCount} notes selected`
@@ -199,12 +253,19 @@ const FolderSuggestions = () => {
             </button>
           ) : (
             <button
-              onClick={() => handleCreateFolder(suggestion, index)}
-              className="flex items-center px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+              onClick={() => isExistingFolder ? 
+                handleMoveToExistingFolder(suggestion, index) : 
+                handleCreateFolder(suggestion, index)
+              }
+              className={`flex items-center px-3 py-1.5 ${
+                isExistingFolder ? 'bg-blue-500' : 'bg-blue-500'
+              } text-white rounded hover:bg-blue-600`}
               disabled={isLoading || selectedCount === 0}
             >
-              {isLoading ? <Loader size={16} className="animate-spin" /> : <Plus size={16} />}
-              <span className="ml-1">Create</span>
+              {isLoading ? <Loader size={16} className="animate-spin" /> : 
+                isExistingFolder ? <FolderIcon size={16} /> : <Plus size={16} />
+              }
+              <span className="ml-1">{isExistingFolder ? 'Move Notes' : 'Create'}</span>
             </button>
           )}
         </div>
@@ -212,7 +273,9 @@ const FolderSuggestions = () => {
         {isExpanded && !isCreated && (
           <div className="mt-4 border rounded-md max-h-64 overflow-y-auto">
             <div className="p-2 bg-gray-50 border-b flex items-center justify-between">
-              <span className="text-sm font-medium">Notes to include</span>
+              <span className="text-sm font-medium">
+                {isExistingFolder ? 'Notes to move' : 'Notes to include'}
+              </span>
               <label className="flex items-center text-xs">
                 <input 
                   type="checkbox"
@@ -239,19 +302,27 @@ const FolderSuggestions = () => {
     );
   };
   
-  // Success message banner
-  const renderSuccessMessage = () => {
-    if (!showSuccessMessage) return null;
-    
-    return (
-      <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
-        <div className="flex items-center">
-          <Check size={18} className="mr-2" />
-          <span>Folder created successfully!</span>
-        </div>
+// Success message banner with support for both new and existing folders
+const renderSuccessMessage = () => {
+  if (!showSuccessMessage) return null;
+  
+  // Determine if the most recent action was for an existing folder
+  const latestFolder = createdFolders[createdFolders.length - 1];
+  const isExistingFolder = latestFolder?.isExisting;
+  
+  return (
+    <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+      <div className="flex items-center">
+        <Check size={18} className="mr-2" />
+        <span>
+          {isExistingFolder 
+            ? 'Notes successfully moved to folder!'
+            : 'Folder created successfully!'}
+        </span>
       </div>
-    );
-  };
+    </div>
+  );
+};
   
   // Action buttons at the bottom
   const renderActionButtons = () => {
