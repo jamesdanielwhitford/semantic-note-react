@@ -31,11 +31,10 @@ const NoteItem = ({ note, onDelete, folders }) => {
     }
   };
   
+  // Key fix: Instead of nesting links, we'll render the content without wrapping it in a Link
+  // and handle the navigation programmatically
   return (
-    <Link
-      to={`/notes/${note.id}`}
-      className="block border rounded-lg p-4 mb-3 hover:shadow-md transition-shadow group bg-white"
-    >
+    <div className="block border rounded-lg p-4 mb-3 hover:shadow-md transition-shadow group bg-white">
       <div className="flex items-start">
         {isImageNote ? (
           <div className="mr-3 flex-shrink-0 w-16 h-16 relative bg-gray-100 rounded overflow-hidden">
@@ -53,7 +52,10 @@ const NoteItem = ({ note, onDelete, folders }) => {
           <FileText size={18} className="text-blue-500 mr-3 mt-1 flex-shrink-0" />
         )}
         
-        <div className="flex-grow">
+        <Link
+          to={`/notes/${note.id}`}
+          className="flex-grow"
+        >
           <div className="text-sm text-gray-500 flex items-center mb-1">
             <span className="mr-3">{formattedDate}</span>
             <div className="flex items-center text-xs bg-gray-100 px-2 py-1 rounded">
@@ -67,7 +69,8 @@ const NoteItem = ({ note, onDelete, folders }) => {
             )}
           </div>
           <p className="text-gray-800">{snippet}</p>
-        </div>
+        </Link>
+        
         <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
           {!isImageNote && (
             <Link
@@ -86,7 +89,7 @@ const NoteItem = ({ note, onDelete, folders }) => {
           </button>
         </div>
       </div>
-    </Link>
+    </div>
   );
 };
 

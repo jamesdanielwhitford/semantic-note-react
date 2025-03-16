@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { FolderIcon, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 
 const FolderItem = ({ folder, level = 0, onDelete }) => {
   const [expanded, setExpanded] = useState(false);
+  const navigate = useNavigate();
   
   const hasChildren = folder.children && folder.children.length > 0;
   const paddingLeft = `${(level * 16) + 8}px`;
   
   const toggleExpand = (e) => {
     e.stopPropagation();
+    e.preventDefault(); // Prevent navigation
     setExpanded(!expanded);
   };
   
@@ -21,15 +23,23 @@ const FolderItem = ({ folder, level = 0, onDelete }) => {
     }
   };
   
+  const navigateToFolder = (e) => {
+    // Don't navigate if clicking on the expand/collapse button or delete button
+    if (e.target.closest('button')) {
+      return;
+    }
+    navigate(`/folders/${folder.id}`);
+  };
+  
   return (
     <div>
-      <Link
-        to={`/folders/${folder.id}`}
-        className="flex items-center py-2 px-2 hover:bg-gray-100 rounded text-gray-700 text-sm group"
+      <div
+        className="flex items-center py-2 px-2 hover:bg-gray-100 rounded text-gray-700 text-sm group cursor-pointer"
         style={{ paddingLeft }}
+        onClick={navigateToFolder}
       >
         {hasChildren ? (
-          <button onClick={toggleExpand} className="mr-1">
+          <button onClick={toggleExpand} className="mr-1 z-10">
             {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
         ) : (
@@ -47,11 +57,11 @@ const FolderItem = ({ folder, level = 0, onDelete }) => {
         
         <button 
           onClick={handleDelete}
-          className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity z-10"
         >
           <Trash2 size={14} />
         </button>
-      </Link>
+      </div>
       
       {hasChildren && expanded && (
         <div>
