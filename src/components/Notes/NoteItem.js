@@ -1,8 +1,11 @@
+// Fixed NoteItem.js to avoid nested links
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { FileText, Edit, Trash2, FolderIcon, Image } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Edit, Trash2, FolderIcon, Image } from 'lucide-react';
 
 const NoteItem = ({ note, onDelete, folders }) => {
+  const navigate = useNavigate();
+  
   // Get folder name if the note is in a folder
   const folderName = note.folderId
     ? folders.find(f => f.id === note.folderId)?.title || 'Unknown Folder'
@@ -31,10 +34,15 @@ const NoteItem = ({ note, onDelete, folders }) => {
     }
   };
   
-  // Key fix: Instead of nesting links, we'll render the content without wrapping it in a Link
-  // and handle the navigation programmatically
+  const handleNoteClick = () => {
+    navigate(`/notes/${note.id}`);
+  };
+  
   return (
-    <div className="block border rounded-lg p-4 mb-3 hover:shadow-md transition-shadow group bg-white">
+    <div 
+      className="block border rounded-lg p-4 mb-3 hover:shadow-md transition-shadow group bg-white cursor-pointer"
+      onClick={handleNoteClick}
+    >
       <div className="flex items-start">
         {isImageNote ? (
           <div className="mr-3 flex-shrink-0 w-16 h-16 relative bg-gray-100 rounded overflow-hidden">
@@ -49,13 +57,10 @@ const NoteItem = ({ note, onDelete, folders }) => {
             )}
           </div>
         ) : (
-          <FileText size={18} className="text-blue-500 mr-3 mt-1 flex-shrink-0" />
+          <Image size={18} className="text-blue-500 mr-3 mt-1 flex-shrink-0" />
         )}
         
-        <Link
-          to={`/notes/${note.id}`}
-          className="flex-grow"
-        >
+        <div className="flex-grow">
           <div className="text-sm text-gray-500 flex items-center mb-1">
             <span className="mr-3">{formattedDate}</span>
             <div className="flex items-center text-xs bg-gray-100 px-2 py-1 rounded">
@@ -69,7 +74,7 @@ const NoteItem = ({ note, onDelete, folders }) => {
             )}
           </div>
           <p className="text-gray-800">{snippet}</p>
-        </Link>
+        </div>
         
         <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
           {!isImageNote && (
