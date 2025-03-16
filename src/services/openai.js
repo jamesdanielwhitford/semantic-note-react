@@ -18,8 +18,16 @@ const openaiAPI = axios.create({
  */
 export const generateFolderSuggestions = async (notes, existingFolders = [], parentFolderTitle = null) => {
   try {
-    // Extract note content
-    const notesContent = notes.map(note => note.content).join('\n\n---\n\n');
+    // Extract note content and determine if it's an image note
+    const notesContent = notes.map(note => {
+      const isImageNote = note.type === 'image';
+      const content = note.content;
+      
+      // Mark image notes with [IMAGE] prefix so the AI knows it's analyzing an image description
+      return isImageNote 
+        ? `[IMAGE DESCRIPTION] ${content}` 
+        : content;
+    }).join('\n\n---\n\n');
     
     // Format existing folders for the prompt
     const existingFoldersText = existingFolders.length > 0 

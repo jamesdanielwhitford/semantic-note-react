@@ -20,6 +20,7 @@ import FolderSuggestions from './components/Folders/FolderSuggestions';
 import NoteList from './components/Notes/NoteList';
 import NoteView from './components/Notes/NoteView';
 import CreateNote from './components/Notes/CreateNote';
+import CreateImageNote from './components/Notes/CreateImageNote';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -48,6 +49,7 @@ function App() {
                   <Route path="/notes" element={<NoteList />} />
                   <Route path="/notes/:noteId" element={<NoteView />} />
                   <Route path="/create-note" element={<CreateNote />} />
+                  <Route path="/create-image-note" element={<CreateImageNote />} />
                   <Route path="/notes/:noteId/edit" element={<CreateNote />} />
                 </Routes>
               </MainContent>

@@ -1,7 +1,7 @@
 // Sidebar.js
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Home, FileText, FolderPlus, FilePlus, FolderIcon } from 'lucide-react';
+import { Home, FileText, FolderPlus, FilePlus, ImagePlus, FolderIcon } from 'lucide-react';
 import FolderList from '../Folders/FolderList';
 
 const Sidebar = ({ isOpen }) => {
@@ -40,7 +40,16 @@ const Sidebar = ({ isOpen }) => {
                 className="flex items-center py-2 px-4 rounded hover:bg-gray-100 text-gray-700"
               >
                 <FilePlus size={18} className="mr-3" />
-                Create Note
+                Create Text Note
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/create-image-note"
+                className="flex items-center py-2 px-4 rounded hover:bg-gray-100 text-gray-700"
+              >
+                <ImagePlus size={18} className="mr-3" />
+                Create Image Note
               </Link>
             </li>
             <li>

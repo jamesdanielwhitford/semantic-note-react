@@ -178,9 +178,21 @@ export const NoteProvider = ({ children }) => {
         throw new Error('Not enough notes to generate suggestions. Add at least 3 notes.');
       }
       
+      // Process notes to make sure image notes include their AI description
+      const processedNotes = notesToAnalyze.map(note => {
+        // For image notes, use the AI description instead of the visible content
+        if (note.type === 'image' && note.imageData && note.imageData.aiDescription) {
+          return {
+            ...note,
+            content: note.imageData.aiDescription // Override content with AI description for analysis
+          };
+        }
+        return note;
+      });
+      
       // Generate suggestions
       const suggestions = await generateFolderSuggestions(
-        notesToAnalyze, 
+        processedNotes, 
         existingFolders, 
         parentFolderTitle
       );

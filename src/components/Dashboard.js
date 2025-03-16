@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useFolders } from '../context/FolderContext';
 import { useNotes } from '../context/NoteContext';
-import { FilePlus, FolderPlus, FileText, FolderIcon } from 'lucide-react';
+import { FilePlus, FolderPlus, FileText, FolderIcon, ImagePlus, Image } from 'lucide-react';
 import NoteList from './Notes/NoteList';
 
 const Dashboard = () => {
@@ -22,13 +22,20 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Link
               to="/create-note"
               className="flex items-center justify-center p-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
             >
               <FilePlus size={20} className="mr-2" />
-              Create Note
+              Create Text Note
+            </Link>
+            <Link
+              to="/create-image-note"
+              className="flex items-center justify-center p-4 bg-purple-500 text-white rounded-lg hover:bg-purple-600"
+            >
+              <ImagePlus size={20} className="mr-2" />
+              Create Image Note
             </Link>
             <Link
               to="/folder-suggestions"
@@ -123,13 +130,22 @@ const Dashboard = () => {
           <h2 className="text-xl font-semibold">
             Unorganized Notes {unorganizedNotes.length > 0 && `(${unorganizedNotes.length})`}
           </h2>
-          <Link 
-            to="/create-note" 
-            className="flex items-center text-blue-500 hover:text-blue-700"
-          >
-            <FilePlus size={18} className="mr-1" />
-            Create Note
-          </Link>
+          <div className="flex space-x-2">
+            <Link 
+              to="/create-image-note" 
+              className="flex items-center text-purple-500 hover:text-purple-700"
+            >
+              <ImagePlus size={18} className="mr-1" />
+              Create Image Note
+            </Link>
+            <Link 
+              to="/create-note" 
+              className="flex items-center text-blue-500 hover:text-blue-700"
+            >
+              <FilePlus size={18} className="mr-1" />
+              Create Text Note
+            </Link>
+          </div>
         </div>
         
         {unorganizedNotes.length > 0 ? (
@@ -151,12 +167,20 @@ const Dashboard = () => {
           <div className="bg-gray-50 rounded-lg border p-10 text-center">
             <FileText size={40} className="text-gray-300 mx-auto mb-3" />
             <p className="text-gray-600 mb-4">No unorganized notes. All your notes are in folders!</p>
-            <Link
-              to="/create-note"
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Create a New Note
-            </Link>
+            <div className="flex justify-center space-x-4">
+              <Link
+                to="/create-note"
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Create a Text Note
+              </Link>
+              <Link
+                to="/create-image-note"
+                className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
+              >
+                Create an Image Note
+              </Link>
+            </div>
           </div>
         )}
       </div>

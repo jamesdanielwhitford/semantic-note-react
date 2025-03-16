@@ -72,18 +72,23 @@ const NoteView = () => {
     minute: '2-digit'
   });
   
+  // Determine if this is an image note
+  const isImageNote = note.type === 'image' && note.imageData;
+  
   return (
     <div className="max-w-3xl mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
         <div className="text-sm text-gray-500">{formattedDate}</div>
         <div className="flex space-x-2">
-          <Link
-            to={`/notes/${note.id}/edit`}
-            className="flex items-center px-3 py-1 bg-gray-100 rounded hover:bg-gray-200 text-gray-700"
-          >
-            <Edit size={16} className="mr-1" />
-            Edit
-          </Link>
+          {!isImageNote && (
+            <Link
+              to={`/notes/${note.id}/edit`}
+              className="flex items-center px-3 py-1 bg-gray-100 rounded hover:bg-gray-200 text-gray-700"
+            >
+              <Edit size={16} className="mr-1" />
+              Edit
+            </Link>
+          )}
           <button
             onClick={handleDeleteNote}
             className="flex items-center px-3 py-1 bg-red-100 rounded hover:bg-red-200 text-red-700"
@@ -108,11 +113,38 @@ const NoteView = () => {
       )}
       
       <div className="bg-white p-6 rounded-lg border shadow-sm">
-        <div className="prose max-w-none">
-          {note.content.split('\n').map((paragraph, index) => (
-            paragraph ? <p key={index}>{paragraph}</p> : <br key={index} />
-          ))}
-        </div>
+        {isImageNote ? (
+          <div>
+            <div className="mb-4 text-center">
+              <img 
+                src={note.imageData.dataUrl} 
+                alt={note.content}
+                className="max-w-full mx-auto rounded"
+                style={{
+                  maxHeight: '70vh'
+                }}
+              />
+            </div>
+            
+            {note.content && (
+              <div className="mt-4 text-gray-700 border-t pt-4">
+                <h3 className="text-lg font-medium mb-2">Description</h3>
+                <p>{note.content}</p>
+              </div>
+            )}
+            
+            <div className="mt-4 text-xs text-gray-500 border-t pt-3 flex justify-between">
+              <span>Original: {note.imageData.originalName}</span>
+              <span>{note.imageData.width} × {note.imageData.height} ({note.imageData.sizeKB} KB)</span>
+            </div>
+          </div>
+        ) : (
+          <div className="prose max-w-none">
+            {note.content.split('\n').map((paragraph, index) => (
+              paragraph ? <p key={index}>{paragraph}</p> : <br key={index} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
